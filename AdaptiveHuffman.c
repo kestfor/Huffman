@@ -12,8 +12,6 @@
 #define LEN_BYTE 8
 #define MAX_NODE_SIZE SHRT_MAX
 #define BUFF_SIZE 10000
-#define FULL_RECALCULATE 1
-#define PARTIAL_RECALCULATE 2
 
 
 typedef struct byte {
@@ -63,13 +61,8 @@ void get_output_name(char *output_name, char *input_name, int mode) {
         strncpy(output_name, input_name, strchr(input_name, '.') - input_name);
         strcat(output_name, "_compressed.txt");
     } else {
-        if (strstr(input_name, "_compressed") != NULL) {
-            strncpy(output_name, input_name, strstr(input_name, "_compressed") - input_name);
-            strcat(output_name, ".txt");
-        } else {
-            strcpy(output_name, input_name);
-            strcat(output_name, "_decompressed.txt");
-        }
+        strncpy(output_name, input_name, strstr(input_name, "_compressed") - input_name);
+        strcat(output_name, ".txt");
     }
 }
 
@@ -128,6 +121,19 @@ tree_node *node_init(int letter, int amount, tree_node *left, tree_node *right, 
 }
 
 
+void insert_node(tree_node *node, tree_node *array_form[], int *len_array) {
+    tree_node *old_nyt = array_form[*len_array - 1];
+    tree_node *new_nyt = node_init(NYT, 0, NULL, NULL, old_nyt);
+    node->parent = old_nyt;
+    old_nyt->left = new_nyt;
+    old_nyt->right = node;
+    old_nyt->letter = EMPTY;
+    array_form[*len_array] = node;
+    array_form[*len_array + 1] = new_nyt;
+    *len_array += 2;
+}
+
+
 int bin_to_int(char bin[]) {
     int result = 0;
     int len = (int) strlen(bin);
@@ -166,14 +172,14 @@ void update_byte(byte *output_byte, char code[], FILE *stream) {
 }
 
 
-int full_recalculate(tree_node *node) {
+int recalculate_tree(tree_node *node) {
     int left_amount = 0;
     int right_amount = 0;
     if (node->left != NULL) {
-        left_amount = full_recalculate(node->left);
+        left_amount = recalculate_tree(node->left);
     }
     if (node->right != NULL) {
-        right_amount = full_recalculate(node->right);
+        right_amount = recalculate_tree(node->right);
     }
     if (node->left == NULL && node->right == NULL) {
         return node->amount;
@@ -181,25 +187,6 @@ int full_recalculate(tree_node *node) {
         node->amount = left_amount + right_amount;
         return node->amount;
     }
-}
-
-
-void update_parents(tree_node *node) {
-    while (node->parent != NULL) {
-        tree_node *parent = node->parent;
-        if (parent->right == node) {
-            parent->amount = parent->left->amount + node->amount;
-        } else {
-            parent->amount = parent->right->amount + node->amount;
-        }
-        node = parent;
-    }
-}
-
-
-void partial_recalculate(tree_node *first_node, tree_node *second_node) {
-    update_parents(first_node);
-    update_parents(second_node);
 }
 
 
@@ -246,18 +233,14 @@ bool is_sorted(tree_node *array_form[], int len_array, int *first_ind, int *seco
 }
 
 
-void repair_tree(tree_node *array_form[], int len_array, int recalculating_type) {
+void repair_tree(tree_node *array_form[], int len_array) {
     int ind_first_error;
     int ind_second_error;
     bool is_huffman_tree = is_sorted(array_form, len_array, &ind_first_error, &ind_second_error);
     while (!is_huffman_tree) {
         swap(&array_form[ind_first_error], &array_form[ind_second_error], sizeof(tree_node *));
         swap_nodes(array_form[ind_first_error], array_form[ind_second_error]);
-        if (recalculating_type == FULL_RECALCULATE) {
-            full_recalculate(array_form[0]);
-        } else {
-            partial_recalculate(array_form[ind_first_error], array_form[ind_second_error]);
-        }
+        recalculate_tree(array_form[0]);
         is_huffman_tree = is_sorted(array_form, len_array, &ind_first_error, &ind_second_error);
     }
 }
@@ -270,7 +253,7 @@ void scale_tree(tree_node *array_form[], int len_array) {
             array_form[i]->amount = 1;
         }
     }
-    repair_tree(array_form, len_array, FULL_RECALCULATE);
+    repair_tree(array_form, len_array);
 }
 
 
@@ -279,25 +262,10 @@ void update_tree(tree_node *node, tree_node *array_form[], int len_array) {
         node->amount++;
         node = node->parent;
     }
-    repair_tree(array_form, len_array, PARTIAL_RECALCULATE);
+    repair_tree(array_form, len_array);
     if (array_form[0]->amount == MAX_NODE_SIZE) {
         scale_tree(array_form, len_array);
     }
-}
-
-
-void insert_node(tree_node *node, tree_node *array_form[], int *len_array) {
-    tree_node *old_nyt = array_form[*len_array - 1];
-    tree_node *new_nyt = node_init(NYT, 0, NULL, NULL, old_nyt);
-    node->parent = old_nyt;
-    old_nyt->left = new_nyt;
-    old_nyt->right = node;
-    old_nyt->letter = EMPTY;
-    old_nyt->amount = node->amount;
-    array_form[*len_array] = node;
-    array_form[*len_array + 1] = new_nyt;
-    *len_array += 2;
-    update_tree(node, array_form, *len_array);
 }
 
 
@@ -327,6 +295,7 @@ void compress(FILE *dest, FILE *source) {
             tree_node *new_node = node_init(symbol, 0, NULL, NULL, NULL);
             symbols[symbol] = new_node;
             insert_node(new_node, array_form, &len_array);
+            update_tree(new_node, array_form, len_array);
         }
     }
     char code[MAX_LEN + 1] = "";
@@ -370,6 +339,7 @@ void decompress(FILE *dest, FILE *source) {
                 fprintf(dest, "%c", letter);
                 tree_node *new_node = node_init(letter, 0, NULL, NULL, NULL);
                 insert_node(new_node, array_form, &len_array);
+                update_tree(new_node, array_form, len_array);
                 is_ascii_code = false;
                 ascii_code.count_filled = 0;
                 curr_node = tree_top;
