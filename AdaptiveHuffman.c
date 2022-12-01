@@ -10,7 +10,7 @@
 #define MAX_LEN 256
 #define MAX_AMOUNT_NODES ((MAX_LEN + 2) * 2 - 1)
 #define LEN_BYTE 8
-#define MAX_NODE_SIZE SHRT_MAX
+#define MAX_NODE_SIZE 1000
 #define BUFF_SIZE 10000
 
 
@@ -19,7 +19,6 @@ typedef struct byte {
     char bits[LEN_BYTE + 1];
 } byte;
 
-
 typedef struct tree_node {
     int letter;
     int amount;
@@ -27,6 +26,13 @@ typedef struct tree_node {
     struct tree_node *left;
     struct tree_node *parent;
 } tree_node;
+
+
+typedef struct queue {
+    tree_node *array[MAX_AMOUNT_NODES];
+    int first;
+    int last;
+} queue;
 
 
 enum mode {
@@ -40,6 +46,28 @@ short int filled_memory = 0;
 unsigned char buffer[BUFF_SIZE + 1] = "";
 short int len_buffer = 0;
 short int amount_read = 0;
+
+
+tree_node *extract(queue *my_queue) {
+    if (my_queue->last - my_queue->first > 0) {
+        tree_node *node = my_queue->array[my_queue->first % MAX_AMOUNT_NODES];
+        my_queue->first++;
+        return node;
+    } else {
+        return NULL;
+    }
+}
+
+
+void add(queue *my_queue, tree_node *node) {
+    my_queue->array[my_queue->last % MAX_AMOUNT_NODES] = node;
+    my_queue->last++;
+}
+
+
+bool is_empty(queue *my_queue) {
+    return my_queue->last - my_queue->first == 0;
+}
 
 
 int get_char(FILE *stream) {
@@ -56,23 +84,6 @@ int get_char(FILE *stream) {
 }
 
 
-void get_output_name(char *output_name, char *input_name, int mode) {
-    if (mode == zip) {
-        strncpy(output_name, input_name, strchr(input_name, '.') - input_name);
-        strcat(output_name, "_compressed.txt");
-    } else {
-        strncpy(output_name, input_name, strstr(input_name, "_compressed") - input_name);
-        strcat(output_name, ".txt");
-    }
-}
-
-
-void get_input_name(char *input_name) {
-    fgets(input_name, MAX_LEN, stdin);
-    input_name[strlen(input_name) - 1] = '\000';
-}
-
-
 void swap(void *el1, void *el2, int size) {
     for (int i = 0; i < size; i++) {
         char buf = *((char *) el1 + i);
@@ -82,7 +93,29 @@ void swap(void *el1, void *el2, int size) {
 }
 
 
-void swap_nodes(tree_node *node1, tree_node *node2) {
+void rebuild_array(tree_node **array_form, int ind_start) {
+    int curr_ind = 0;
+    queue my_queue = {0};
+    add(&my_queue, array_form[0]);
+    while (!is_empty(&my_queue)) {
+        tree_node *node = extract(&my_queue);
+        if (curr_ind >= ind_start) {
+            array_form[curr_ind] = node;
+        }
+        if (node->right != NULL) {
+            add(&my_queue, node->right);
+        }
+        if (node->left != NULL) {
+            add(&my_queue, node->left);
+        }
+        curr_ind++;
+    }
+}
+
+
+void swap_nodes(tree_node **array_form, int ind_first_error, int ind_second_error) {
+    tree_node *node1 = array_form[ind_first_error];
+    tree_node *node2 = array_form[ind_second_error];
     if (node1->parent == node2->parent) {
         tree_node *left = (node1->parent->left == node1) ? node1 : node2;
         tree_node *right = (node1->parent->right == node1) ? node1 : node2;
@@ -110,6 +143,12 @@ void swap_nodes(tree_node *node1, tree_node *node2) {
         node1->parent = parent2;
         node2->parent = parent1;
     }
+    if (node1->left != NULL || node2->left != NULL || node2->right != NULL || node1->right != NULL) {
+        int ind_start = (ind_second_error < ind_first_error) ? ind_second_error : ind_first_error;
+        rebuild_array(array_form, ind_start);
+    } else {
+        swap(&array_form[ind_first_error], &array_form[ind_second_error], sizeof(tree_node *));
+    }
 }
 
 
@@ -118,19 +157,6 @@ tree_node *node_init(int letter, int amount, tree_node *left, tree_node *right, 
     filled_memory++;
     *new_node = (tree_node) {letter, amount, left, right, parent};
     return new_node;
-}
-
-
-void insert_node(tree_node *node, tree_node *array_form[], int *len_array) {
-    tree_node *old_nyt = array_form[*len_array - 1];
-    tree_node *new_nyt = node_init(NYT, 0, NULL, NULL, old_nyt);
-    node->parent = old_nyt;
-    old_nyt->left = new_nyt;
-    old_nyt->right = node;
-    old_nyt->letter = EMPTY;
-    array_form[*len_array] = node;
-    array_form[*len_array + 1] = new_nyt;
-    *len_array += 2;
 }
 
 
@@ -172,21 +198,22 @@ void update_byte(byte *output_byte, char code[], FILE *stream) {
 }
 
 
-int recalculate_tree(tree_node *node) {
-    int left_amount = 0;
-    int right_amount = 0;
-    if (node->left != NULL) {
-        left_amount = recalculate_tree(node->left);
+void update_parents(tree_node *node) {
+    while (node->parent != NULL) {
+        tree_node *parent = node->parent;
+        if (parent->right == node) {
+            parent->amount = parent->left->amount + node->amount;
+        } else {
+            parent->amount = parent->right->amount + node->amount;
+        }
+        node = parent;
     }
-    if (node->right != NULL) {
-        right_amount = recalculate_tree(node->right);
-    }
-    if (node->left == NULL && node->right == NULL) {
-        return node->amount;
-    } else {
-        node->amount = left_amount + right_amount;
-        return node->amount;
-    }
+}
+
+
+void partial_recalculate(tree_node *first_node, tree_node *second_node) {
+    update_parents(first_node);
+    update_parents(second_node);
 }
 
 
@@ -238,22 +265,10 @@ void repair_tree(tree_node *array_form[], int len_array) {
     int ind_second_error;
     bool is_huffman_tree = is_sorted(array_form, len_array, &ind_first_error, &ind_second_error);
     while (!is_huffman_tree) {
-        swap(&array_form[ind_first_error], &array_form[ind_second_error], sizeof(tree_node *));
-        swap_nodes(array_form[ind_first_error], array_form[ind_second_error]);
-        recalculate_tree(array_form[0]);
+        swap_nodes(array_form, ind_first_error, ind_second_error);
+        partial_recalculate(array_form[ind_first_error], array_form[ind_second_error]);
         is_huffman_tree = is_sorted(array_form, len_array, &ind_first_error, &ind_second_error);
     }
-}
-
-
-void scale_tree(tree_node *array_form[], int len_array) {
-    for (int i = 0; i < len_array - 2; i++) {
-        array_form[i]->amount /= 2;
-        if (array_form[i]->amount == 0) {
-            array_form[i]->amount = 1;
-        }
-    }
-    repair_tree(array_form, len_array);
 }
 
 
@@ -263,16 +278,28 @@ void update_tree(tree_node *node, tree_node *array_form[], int len_array) {
         node = node->parent;
     }
     repair_tree(array_form, len_array);
-    if (array_form[0]->amount == MAX_NODE_SIZE) {
-        scale_tree(array_form, len_array);
-    }
+}
+
+
+void insert_node(tree_node *node, tree_node *array_form[], int *len_array) {
+    tree_node *old_nyt = array_form[*len_array - 1];
+    tree_node *new_nyt = node_init(NYT, 0, NULL, NULL, old_nyt);
+    new_nyt->parent = old_nyt;
+    old_nyt->left = new_nyt;
+    old_nyt->right = node;
+    old_nyt->letter = EMPTY;
+    old_nyt->amount = node->amount;
+    node->parent = old_nyt;
+    array_form[*len_array] = node;
+    array_form[*len_array + 1] = new_nyt;
+    *len_array += 2;
 }
 
 
 void compress(FILE *dest, FILE *source) {
     tree_node *symbols[MAX_LEN] = {NULL};
     tree_node *array_form[MAX_AMOUNT_NODES] = {NULL};
-    array_form[0] = node_init(NYT, 0, NULL, NULL, NULL);
+    array_form[0] = node_init(NYT, 0, NULL, NULL, NULL);;
     int len_array = 1;
     tree_node *end = node_init(END, 0, NULL, NULL, NULL);
     insert_node(end, array_form, &len_array);
@@ -292,7 +319,7 @@ void compress(FILE *dest, FILE *source) {
             char code_symbol[LEN_BYTE + 1] = "";
             int_to_bin(code_symbol, symbol);
             update_byte(&output_byte, code_symbol, dest);
-            tree_node *new_node = node_init(symbol, 0, NULL, NULL, NULL);
+            tree_node *new_node = node_init(symbol, 0, NULL, NULL, array_form[len_array - 1]);
             symbols[symbol] = new_node;
             insert_node(new_node, array_form, &len_array);
             update_tree(new_node, array_form, len_array);
@@ -366,6 +393,23 @@ void decompress(FILE *dest, FILE *source) {
             }
         }
     }
+}
+
+
+void get_output_name(char *output_name, char *input_name, int mode) {
+    if (mode == zip) {
+        strncpy(output_name, input_name, strchr(input_name, '.') - input_name);
+        strcat(output_name, "_compressed.txt");
+    } else {
+        strncpy(output_name, input_name, strstr(input_name, "_compressed") - input_name);
+        strcat(output_name, ".txt");
+    }
+}
+
+
+void get_input_name(char *input_name) {
+    fgets(input_name, MAX_LEN, stdin);
+    input_name[strlen(input_name) - 1] = '\000';
 }
 
 
