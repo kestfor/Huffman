@@ -10,7 +10,7 @@
 #define MAX_LEN 256
 #define MAX_AMOUNT_NODES ((MAX_LEN + 2) * 2 - 1)
 #define LEN_BYTE 8
-#define MAX_NODE_SIZE 1000
+#define MAX_NODE_SIZE SHRT_MAX
 #define BUFF_SIZE 10000
 
 
@@ -70,6 +70,11 @@ bool is_empty(queue *my_queue) {
 }
 
 
+int min(int first, int second) {
+    return (first < second) ? first : second;
+}
+
+
 int get_char(FILE *stream) {
     if (amount_read == len_buffer) {
         len_buffer = (short int) fread(buffer, sizeof(unsigned char), BUFF_SIZE, stream);
@@ -95,7 +100,7 @@ void swap(void *el1, void *el2, int size) {
 
 void rebuild_array(tree_node **array_form, int ind_start) {
     int curr_ind = 0;
-    queue my_queue = {0};
+    queue my_queue = {{0}, 0, 0};
     add(&my_queue, array_form[0]);
     while (!is_empty(&my_queue)) {
         tree_node *node = extract(&my_queue);
@@ -144,10 +149,10 @@ void swap_nodes(tree_node **array_form, int ind_first_error, int ind_second_erro
         node2->parent = parent1;
     }
     if (node1->left != NULL || node2->left != NULL || node2->right != NULL || node1->right != NULL) {
-        int ind_start = (ind_second_error < ind_first_error) ? ind_second_error : ind_first_error;
+        int ind_start = min(ind_first_error, ind_second_error);
         rebuild_array(array_form, ind_start);
     } else {
-        swap(&array_form[ind_first_error], &array_form[ind_second_error], sizeof(tree_node *));
+        swap(&array_form[ind_first_error], &array_form[ind_second_error], sizeof(tree_node **));
     }
 }
 
@@ -198,6 +203,25 @@ void update_byte(byte *output_byte, char code[], FILE *stream) {
 }
 
 
+int scale_tree(tree_node *node) {
+    int left_amount = 0;
+    int right_amount = 0;
+    if (node->left != NULL) {
+        left_amount = scale_tree(node->left);
+    }
+    if (node->right != NULL) {
+        right_amount = scale_tree(node->right);
+    }
+    if (node->left == NULL && node->right == NULL) {
+        node->amount = node->amount / 2;
+        return node->amount;
+    } else {
+        node->amount = left_amount + right_amount;
+        return node->amount;
+    }
+}
+
+
 void update_parents(tree_node *node) {
     while (node->parent != NULL) {
         tree_node *parent = node->parent;
@@ -211,7 +235,7 @@ void update_parents(tree_node *node) {
 }
 
 
-void partial_recalculate(tree_node *first_node, tree_node *second_node) {
+void recalculate_tree(tree_node *first_node, tree_node *second_node) {
     update_parents(first_node);
     update_parents(second_node);
 }
@@ -266,7 +290,7 @@ void repair_tree(tree_node *array_form[], int len_array) {
     bool is_huffman_tree = is_sorted(array_form, len_array, &ind_first_error, &ind_second_error);
     while (!is_huffman_tree) {
         swap_nodes(array_form, ind_first_error, ind_second_error);
-        partial_recalculate(array_form[ind_first_error], array_form[ind_second_error]);
+        recalculate_tree(array_form[ind_first_error], array_form[ind_second_error]);
         is_huffman_tree = is_sorted(array_form, len_array, &ind_first_error, &ind_second_error);
     }
 }
@@ -278,11 +302,15 @@ void update_tree(tree_node *node, tree_node *array_form[], int len_array) {
         node = node->parent;
     }
     repair_tree(array_form, len_array);
+    if (array_form[0]->amount == MAX_NODE_SIZE) {
+        scale_tree(array_form[0]);
+        repair_tree(array_form, len_array);
+    }
 }
 
 
-void insert_node(tree_node *node, tree_node *array_form[], int *len_array) {
-    tree_node *old_nyt = array_form[*len_array - 1];
+void insert_node(tree_node *node, tree_node **nyt, tree_node *array_form[], int *len_array) {
+    tree_node *old_nyt = *nyt;
     tree_node *new_nyt = node_init(NYT, 0, NULL, NULL, old_nyt);
     new_nyt->parent = old_nyt;
     old_nyt->left = new_nyt;
@@ -293,16 +321,18 @@ void insert_node(tree_node *node, tree_node *array_form[], int *len_array) {
     array_form[*len_array] = node;
     array_form[*len_array + 1] = new_nyt;
     *len_array += 2;
+    *nyt = new_nyt;
 }
 
 
 void compress(FILE *dest, FILE *source) {
     tree_node *symbols[MAX_LEN] = {NULL};
     tree_node *array_form[MAX_AMOUNT_NODES] = {NULL};
-    array_form[0] = node_init(NYT, 0, NULL, NULL, NULL);;
+    tree_node *nyt = node_init(NYT, 0, NULL, NULL, NULL);
+    array_form[0] = nyt;
     int len_array = 1;
     tree_node *end = node_init(END, 0, NULL, NULL, NULL);
-    insert_node(end, array_form, &len_array);
+    insert_node(end, &nyt, array_form, &len_array);
     byte output_byte = {0};
     int symbol;
     while ((symbol = get_char(source)) != EOF) {
@@ -314,14 +344,14 @@ void compress(FILE *dest, FILE *source) {
             update_tree(node, array_form, len_array);
         } else {
             char code[MAX_LEN + 1] = "";
-            get_code(array_form[len_array - 1], code);
+            get_code(nyt, code);
             update_byte(&output_byte, code, dest);
             char code_symbol[LEN_BYTE + 1] = "";
             int_to_bin(code_symbol, symbol);
             update_byte(&output_byte, code_symbol, dest);
             tree_node *new_node = node_init(symbol, 0, NULL, NULL, array_form[len_array - 1]);
             symbols[symbol] = new_node;
-            insert_node(new_node, array_form, &len_array);
+            insert_node(new_node, &nyt, array_form, &len_array);
             update_tree(new_node, array_form, len_array);
         }
     }
@@ -329,7 +359,7 @@ void compress(FILE *dest, FILE *source) {
     get_code(end, code);
     update_byte(&output_byte, code, dest);
     if (output_byte.count_filled != 0) {
-        while (output_byte.count_filled % 8 != 0) {
+        while (output_byte.count_filled % LEN_BYTE != 0) {
             output_byte.bits[output_byte.count_filled] = '0';
             output_byte.count_filled++;
         }
@@ -339,15 +369,15 @@ void compress(FILE *dest, FILE *source) {
 
 
 void decompress(FILE *dest, FILE *source) {
-    tree_node *tree_top = node_init(NYT, 0, NULL, NULL, NULL);
     tree_node *array_form[MAX_AMOUNT_NODES] = {NULL};
-    array_form[0] = tree_top;
-    tree_node *end = node_init(END, 0, NULL, NULL, NULL);
+    tree_node *nyt = node_init(NYT, 0, NULL, NULL, NULL);
+    array_form[0] = nyt;
     int len_array = 1;
-    insert_node(end, array_form, &len_array);
+    tree_node *end = node_init(END, 0, NULL, NULL, NULL);
+    insert_node(end, &nyt, array_form, &len_array);
     bool is_ascii_code = false;
     byte ascii_code = {0};
-    tree_node *curr_node = tree_top;
+    tree_node *curr_node = array_form[0];
     bool is_end = false;
     while (!is_end) {
         char code[LEN_BYTE + 1] = "";
@@ -361,15 +391,15 @@ void decompress(FILE *dest, FILE *source) {
                     curr_node = curr_node->right;
                 }
             }
-            if (ascii_code.count_filled == 8) {
+            if (ascii_code.count_filled == LEN_BYTE) {
                 int letter = bin_to_int(ascii_code.bits);
                 fprintf(dest, "%c", letter);
                 tree_node *new_node = node_init(letter, 0, NULL, NULL, NULL);
-                insert_node(new_node, array_form, &len_array);
+                insert_node(new_node, &nyt, array_form, &len_array);
                 update_tree(new_node, array_form, len_array);
                 is_ascii_code = false;
                 ascii_code.count_filled = 0;
-                curr_node = tree_top;
+                curr_node = array_form[0];
                 i--;
             }
             if (is_ascii_code) {
@@ -385,7 +415,7 @@ void decompress(FILE *dest, FILE *source) {
                     } else {
                         update_tree(curr_node, array_form, len_array);
                         fprintf(dest, "%c", curr_node->letter);
-                        curr_node = tree_top;
+                        curr_node = array_form[0];
                     }
                 } else {
                     is_ascii_code = true;
@@ -401,8 +431,13 @@ void get_output_name(char *output_name, char *input_name, int mode) {
         strncpy(output_name, input_name, strchr(input_name, '.') - input_name);
         strcat(output_name, "_compressed.txt");
     } else {
-        strncpy(output_name, input_name, strstr(input_name, "_compressed") - input_name);
-        strcat(output_name, ".txt");
+        if (strstr(input_name, "_compressed") == NULL) {
+            strncpy(output_name, input_name, strchr(input_name, '.') - input_name);
+            strcat(output_name, "_uncompressed.txt");
+        } else {
+            strncpy(output_name, input_name, strstr(input_name, "_compressed") - input_name);
+            strcat(output_name, ".txt");
+        }
     }
 }
 
@@ -447,4 +482,3 @@ int main(void) {
     fclose(source);
     fclose(destination);
 }
-
