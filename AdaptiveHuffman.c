@@ -11,7 +11,7 @@
 #define MAX_LEN 256
 #define MAX_AMOUNT_NODES ((MAX_LEN + 2) * 2 - 1)
 #define LEN_BYTE 8
-#define MAX_NODE_SIZE SHRT_MAX // компромисс между коэффициентом сжатия и скоростью для тестов петрова
+#define MAX_NODE_SIZE SHRT_MAX
 #define BUFF_SIZE 10000
 
 
