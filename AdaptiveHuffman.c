@@ -539,6 +539,7 @@ int main(int argc, char *argv[]) {
         FILE *source = fopen(argv[2], "rb");
         if (source == NULL) {
             printf("\nNo such file: %s\n", argv[2]);
+            fclose(source);
             return 0;
         }
         FILE *destination = fopen(argv[3], "wb");
