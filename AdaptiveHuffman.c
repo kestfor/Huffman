@@ -20,11 +20,11 @@ typedef struct {
     FILE *stream;
     int capacity;
     int size;
-} buffer;
+} Buffer;
 
 
-buffer *buffer_init(FILE *stream, int len) {
-    buffer *new = malloc(sizeof(buffer));
+Buffer *buffer_init(FILE *stream, int len) {
+    Buffer *new = malloc(sizeof(Buffer));
     new->string = malloc(sizeof(unsigned char) * BUFF_SIZE);
     new->stream = stream;
     new->capacity = len;
@@ -33,13 +33,13 @@ buffer *buffer_init(FILE *stream, int len) {
 }
 
 
-void clear_buffer(buffer *buff) {
+void clear_buffer(Buffer *buff) {
     free(buff->string);
     free(buff);
 }
 
 
-int get_char(buffer *buff) {
+int get_char(Buffer *buff) {
     if (buff->size == buff->capacity || buff->capacity == 0) {
         buff->capacity = (short int) fread(buff->string, sizeof(unsigned char), BUFF_SIZE, buff->stream);
         buff->size = 0;
@@ -53,7 +53,7 @@ int get_char(buffer *buff) {
 }
 
 
-void put_char(buffer *buff, unsigned char c) {
+void put_char(Buffer *buff, unsigned char c) {
     if (buff->size == buff->capacity) {
         fwrite(buff->string, sizeof(unsigned char), buff->size, buff->stream);
         buff->size = 0;
@@ -65,32 +65,32 @@ void put_char(buffer *buff, unsigned char c) {
 }
 
 
-void print_buffer(buffer *buff) {
+void print_buffer(Buffer *buff) {
     fwrite(buff->string, sizeof(unsigned char), buff->size, buff->stream);
     buff->size = 0;
 }
 
 
-typedef struct byte {
+typedef struct Byte {
     int count_filled;
     char bits[LEN_BYTE + 1];
-} byte;
+} Byte;
 
 
-typedef struct tree_node {
+typedef struct TreeNode {
     int letter;
     int amount;
-    struct tree_node *right;
-    struct tree_node *left;
-    struct tree_node *parent;
-} tree_node;
+    struct TreeNode *right;
+    struct TreeNode *left;
+    struct TreeNode *parent;
+} TreeNode;
 
 
-typedef struct queue {
-    tree_node *array[MAX_AMOUNT_NODES];
+typedef struct Queue {
+    TreeNode *array[MAX_AMOUNT_NODES];
     int first;
     int last;
-} queue;
+} Queue;
 
 
 enum mode {
@@ -98,9 +98,9 @@ enum mode {
     unzip = (int) 'd',
 };
 
-tree_node *extract(queue *my_queue) {
+TreeNode *extract(Queue *my_queue) {
     if (my_queue->last - my_queue->first > 0) {
-        tree_node *node = my_queue->array[my_queue->first % MAX_AMOUNT_NODES];
+        TreeNode *node = my_queue->array[my_queue->first % MAX_AMOUNT_NODES];
         my_queue->first++;
         return node;
     } else {
@@ -109,13 +109,13 @@ tree_node *extract(queue *my_queue) {
 }
 
 
-void add(queue *my_queue, tree_node *node) {
+void add(Queue *my_queue, TreeNode *node) {
     my_queue->array[my_queue->last % MAX_AMOUNT_NODES] = node;
     my_queue->last++;
 }
 
 
-bool is_empty(queue *my_queue) {
+bool is_empty(Queue *my_queue) {
     return my_queue->last - my_queue->first == 0;
 }
 
@@ -134,12 +134,12 @@ void swap(void *el1, void *el2, int size) {
 
 
 //обход дерева в ширину, перестройка массива при свапе листьев с детьми
-void rebuild_array(tree_node **array_form, int ind_start) {
+void rebuild_array(TreeNode **array_form, int ind_start) {
     int curr_ind = 0;
-    queue my_queue = {{0}, 0, 0};
+    Queue my_queue = {{0}, 0, 0};
     add(&my_queue, array_form[0]);
     while (!is_empty(&my_queue)) {
-        tree_node *node = extract(&my_queue);
+        TreeNode *node = extract(&my_queue);
         if (curr_ind >= ind_start) {
             array_form[curr_ind] = node;
         }
@@ -153,23 +153,23 @@ void rebuild_array(tree_node **array_form, int ind_start) {
     }
 }
 
-bool has_kids(tree_node *n) {
+bool has_kids(TreeNode *n) {
     return n->left != NULL || n->right != NULL;
 }
 
 
-void swap_nodes(tree_node **array_form, int ind_first_error, int ind_second_error) {
-    tree_node *node1 = array_form[ind_first_error];
-    tree_node *node2 = array_form[ind_second_error];
+void swap_nodes(TreeNode **array_form, int ind_first_error, int ind_second_error) {
+    TreeNode *node1 = array_form[ind_first_error];
+    TreeNode *node2 = array_form[ind_second_error];
     if (node1->parent == node2->parent) {
-        tree_node *left = (node1->parent->left == node1) ? node1 : node2;
-        tree_node *right = (node1->parent->right == node1) ? node1 : node2;
-        tree_node *parent = node1->parent;
+        TreeNode *left = (node1->parent->left == node1) ? node1 : node2;
+        TreeNode *right = (node1->parent->right == node1) ? node1 : node2;
+        TreeNode *parent = node1->parent;
         parent->left = right;
         parent->right = left;
     } else {
-        tree_node *parent1 = node1->parent;
-        tree_node *parent2 = node2->parent;
+        TreeNode *parent1 = node1->parent;
+        TreeNode *parent2 = node2->parent;
         if (parent1->left == node1) {
             parent1->left = node2;
             if (parent2->left == node2) {
@@ -192,14 +192,14 @@ void swap_nodes(tree_node **array_form, int ind_first_error, int ind_second_erro
         int ind_start = min(ind_first_error, ind_second_error);
         rebuild_array(array_form, ind_start);
     } else {
-        swap(&array_form[ind_first_error], &array_form[ind_second_error], sizeof(tree_node **));
+        swap(&array_form[ind_first_error], &array_form[ind_second_error], sizeof(TreeNode **));
     }
 }
 
 
-tree_node *node_init(int letter, int amount, tree_node *left, tree_node *right, tree_node *parent) {
-    tree_node *new_node = malloc(sizeof(tree_node));
-    *new_node = (tree_node) {letter, amount, left, right, parent};
+TreeNode *node_init(int letter, int amount, TreeNode *left, TreeNode *right, TreeNode *parent) {
+    TreeNode *new_node = malloc(sizeof(TreeNode));
+    *new_node = (TreeNode) {letter, amount, left, right, parent};
     return new_node;
 }
 
@@ -230,7 +230,7 @@ void int_to_bin(char *code, int symbol) {
 
 
 //байт на вывод
-void update_byte(byte *output_byte, char code[], buffer *buff) {
+void update_byte(Byte *output_byte, char code[], Buffer *buff) {
     int len_code = (short int) strlen(code);
     for (int i = 0; i < len_code; i++) {
         output_byte->bits[output_byte->count_filled] = code[i];
@@ -244,7 +244,7 @@ void update_byte(byte *output_byte, char code[], buffer *buff) {
 
 
 //масштабирование дерева от листьев без детей и перерасчет родителей
-int scale_tree(tree_node *node) {
+int scale_tree(TreeNode *node) {
     int left_amount = 0;
     int right_amount = 0;
     if (node->left != NULL) {
@@ -263,9 +263,9 @@ int scale_tree(tree_node *node) {
 }
 
 
-void update_parents(tree_node *node) {
+void update_parents(TreeNode *node) {
     while (node->parent != NULL) {
-        tree_node *parent = node->parent;
+        TreeNode *parent = node->parent;
         if (parent->right == node) {
             parent->amount = parent->left->amount + node->amount;
         } else {
@@ -277,13 +277,13 @@ void update_parents(tree_node *node) {
 
 
 //перерасчет родителей свапнутых листьев
-void recalculate_tree(tree_node *first_node, tree_node *second_node) {
+void recalculate_tree(TreeNode *first_node, TreeNode *second_node) {
     update_parents(first_node);
     update_parents(second_node);
 }
 
 
-void get_code(tree_node *node, char *dest) {
+void get_code(TreeNode *node, char *dest) {
     int len_code = 0;
     while (node->parent != NULL) {
         dest[len_code] = (node->parent->left == node) ? '0' : '1';
@@ -296,7 +296,7 @@ void get_code(tree_node *node, char *dest) {
 }
 
 
-bool is_sorted(tree_node *array_form[], int len_array, int *first_ind, int *second_ind) {
+bool is_sorted(TreeNode *array_form[], int len_array, int *first_ind, int *second_ind) {
     int ind_viol1;
     int ind_viol2;
     bool is_sorted = true;
@@ -327,7 +327,7 @@ bool is_sorted(tree_node *array_form[], int len_array, int *first_ind, int *seco
 
 
 //проверка на дерево хаффмана, починка дерева при необходимости
-void repair_tree(tree_node *array_form[], int len_array) {
+void repair_tree(TreeNode *array_form[], int len_array) {
     int ind_first_error;
     int ind_second_error;
     bool is_huffman_tree = is_sorted(array_form, len_array, &ind_first_error, &ind_second_error);
@@ -340,7 +340,7 @@ void repair_tree(tree_node *array_form[], int len_array) {
 
 
 //увеличение веса листа, перерасчет родителей
-void update_tree(tree_node *node, tree_node *array_form[], int len_array) {
+void update_tree(TreeNode *node, TreeNode *array_form[], int len_array) {
     while (node != NULL) {
         node->amount++;
         node = node->parent;
@@ -353,9 +353,9 @@ void update_tree(tree_node *node, tree_node *array_form[], int len_array) {
 }
 
 
-void insert_node(tree_node *node, tree_node **nyt, tree_node *array_form[], int *len_array) {
-    tree_node *old_nyt = *nyt;
-    tree_node *new_nyt = node_init(NYT, 0, NULL, NULL, old_nyt);
+void insert_node(TreeNode *node, TreeNode **nyt, TreeNode *array_form[], int *len_array) {
+    TreeNode *old_nyt = *nyt;
+    TreeNode *new_nyt = node_init(NYT, 0, NULL, NULL, old_nyt);
     new_nyt->parent = old_nyt;
     old_nyt->left = new_nyt;
     old_nyt->right = node;
@@ -368,7 +368,7 @@ void insert_node(tree_node *node, tree_node **nyt, tree_node *array_form[], int 
     *nyt = new_nyt;
 }
 
-void clear_tree(tree_node *node) {
+void clear_tree(TreeNode *node) {
     if (node->left != NULL) {
         clear_tree(node->left);
     }
@@ -380,20 +380,20 @@ void clear_tree(tree_node *node) {
 
 
 void compress(FILE *dest, FILE *source) {
-    tree_node *symbols[MAX_LEN] = {NULL};
-    tree_node *array_form[MAX_AMOUNT_NODES] = {NULL};
-    tree_node *nyt = node_init(NYT, 0, NULL, NULL, NULL);
+    TreeNode *symbols[MAX_LEN] = {NULL};
+    TreeNode *array_form[MAX_AMOUNT_NODES] = {NULL};
+    TreeNode *nyt = node_init(NYT, 0, NULL, NULL, NULL);
     array_form[0] = nyt;
     int len_array = 1;
-    tree_node *end = node_init(END, 0, NULL, NULL, NULL);
+    TreeNode *end = node_init(END, 0, NULL, NULL, NULL);
     insert_node(end, &nyt, array_form, &len_array);
-    byte output_byte = {0};
+    Byte output_byte = {0};
     int symbol;
-    buffer *input_buff = buffer_init(source, 0);
-    buffer *output_buff = buffer_init(dest, BUFF_SIZE);
+    Buffer *input_buff = buffer_init(source, 0);
+    Buffer *output_buff = buffer_init(dest, BUFF_SIZE);
     while ((symbol = get_char(input_buff)) != EOF) {
         if (symbols[symbol] != NULL) {
-            tree_node *node = symbols[symbol];
+            TreeNode *node = symbols[symbol];
             char code[MAX_LEN + 1] = "";
             get_code(node, code);
             update_byte(&output_byte, code, output_buff);
@@ -405,7 +405,7 @@ void compress(FILE *dest, FILE *source) {
             char code_symbol[LEN_BYTE + 1] = "";
             int_to_bin(code_symbol, symbol);
             update_byte(&output_byte, code_symbol, output_buff);
-            tree_node *new_node = node_init(symbol, 0, NULL, NULL, array_form[len_array - 1]);
+            TreeNode *new_node = node_init(symbol, 0, NULL, NULL, array_form[len_array - 1]);
             symbols[symbol] = new_node;
             insert_node(new_node, &nyt, array_form, &len_array);
             update_tree(new_node, array_form, len_array);
@@ -431,18 +431,18 @@ void compress(FILE *dest, FILE *source) {
 
 
 void decompress(FILE *dest, FILE *source) {
-    tree_node *array_form[MAX_AMOUNT_NODES] = {NULL};
-    tree_node *nyt = node_init(NYT, 0, NULL, NULL, NULL);
+    TreeNode *array_form[MAX_AMOUNT_NODES] = {NULL};
+    TreeNode *nyt = node_init(NYT, 0, NULL, NULL, NULL);
     array_form[0] = nyt;
     int len_array = 1;
-    tree_node *end = node_init(END, 0, NULL, NULL, NULL);
+    TreeNode *end = node_init(END, 0, NULL, NULL, NULL);
     insert_node(end, &nyt, array_form, &len_array);
     bool is_ascii_code = false;
-    byte ascii_code = {0};
-    tree_node *curr_node = array_form[0];
+    Byte ascii_code = {0};
+    TreeNode *curr_node = array_form[0];
     bool is_end = false;
-    buffer *input_buff = buffer_init(source, 0);
-    buffer *output_buff = buffer_init(dest, BUFF_SIZE);
+    Buffer *input_buff = buffer_init(source, 0);
+    Buffer *output_buff = buffer_init(dest, BUFF_SIZE);
     while (!is_end) {
         if (output_buff->size == output_buff->capacity) {
             print_buffer(output_buff);
@@ -461,7 +461,7 @@ void decompress(FILE *dest, FILE *source) {
             if (ascii_code.count_filled == LEN_BYTE) {
                 int letter = bin_to_int(ascii_code.bits);
                 put_char(output_buff, letter);
-                tree_node *new_node = node_init(letter, 0, NULL, NULL, NULL);
+                TreeNode *new_node = node_init(letter, 0, NULL, NULL, NULL);
                 insert_node(new_node, &nyt, array_form, &len_array);
                 update_tree(new_node, array_form, len_array);
                 is_ascii_code = false;
